@@ -11,10 +11,124 @@ Vagrant.configure("2") do |config|
   # The most common configuration options are documented and commented below.
   # For a complete reference, please see the online documentation at
   # https://docs.vagrantup.com.
+  config.vm.provider "virtualbox" do |vb|
+    vb.customize [ "modifyvm", :id, "--uartmode1", "disconnected" ]
+  end
+
+  config.vm.define "db" do |db|
+    db.vm.box = "ubuntu/xenial64"
+    #db.vm.network "private_network", ip: "192.168.10.101"
+    db.vm.network "forwarded_port", guest: 3306, host: 3306
+    db.vm.network "forwarded_port", guest: 2181, host: 2181
+    db.vm.network "forwarded_port", guest: 2888, host: 2888
+    db.vm.network "forwarded_port", guest: 3888, host: 3888
+
+    db.vm.provision "shell", inline: <<-SHELL
+      #cp -f /vagrant/data/sources.list /etc/apt/
+      #chmod 644 /etc/apt/sources.list
+      apt-key adv --keyserver hkp://ipv4.pool.sks-keyservers.net:11371 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+      apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 0xF1656F24C74CD1D8
+      #add-apt-repository 'deb https://apt.dockerproject.org/repo ubuntu-xenial main'
+      add-apt-repository 'deb http://docker.apt.cacher.ng ubuntu-xenial main'
+      add-apt-repository 'deb [arch=amd64,i386,ppc64el] http://mirrors.tuna.tsinghua.edu.cn/mariadb/repo/10.1/ubuntu xenial main'
+      cp -f /vagrant/data/00aptproxy /etc/apt/apt.conf.d/
+      chmod 644 /etc/apt/apt.conf.d/00aptproxy
+      debconf-set-selections <<< 'mariadb-server mysql-server/root_password password mariadb'
+      debconf-set-selections <<< 'mariadb-server mysql-server/root_password_again password mariadb'
+      apt-get update
+      apt-get install -y --allow-unauthenticated mariadb-server apt-transport-https ca-certificates linux-image-extra-$(uname -r) linux-image-extra-virtual docker-engine
+      apt-get -y upgrade
+      cp -f /vagrant/data/docker.service /lib/systemd/system/
+      chmod 644 /lib/systemd/system/docker.service
+      systemctl daemon-reload
+      service docker restart
+      usermod -aG docker ubuntu
+      #docker pull zookeeper
+      docker run --name zookeeper-db --restart always -d -p 2181:2181 -p 2888:2888 -p 3888:3888 zookeeper
+      echo Rebooting...
+    SHELL
+
+    db.vm.provision :unix_reboot
+
+    db.vm.provision "shell", inline: "echo Done!"
+  end
+
+  config.vm.define "web" do |web|
+    web.vm.box = "ubuntu/xenial64"
+    #web.vm.network "private_network", ip: "192.168.10.102"
+    web.vm.network "forwarded_port", guest: 6600, host: 6600
+    web.vm.network "forwarded_port", guest: 2181, host: 4181
+    web.vm.network "forwarded_port", guest: 2888, host: 4888
+    web.vm.network "forwarded_port", guest: 3888, host: 5888
+
+    web.vm.provision "shell", inline: <<-SHELL
+      #cp -f /vagrant/data/sources.list /etc/apt/
+      #chmod 644 /etc/apt/sources.list
+      apt-key adv --keyserver hkp://ipv4.pool.sks-keyservers.net:11371 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+      #add-apt-repository 'deb https://apt.dockerproject.org/repo ubuntu-xenial main'
+      add-apt-repository 'deb http://docker.apt.cacher.ng ubuntu-xenial main'
+      cp -f /vagrant/data/00aptproxy /etc/apt/apt.conf.d/
+      chmod 644 /etc/apt/apt.conf.d/00aptproxy
+      apt-get update
+      apt-get install -y --allow-unauthenticated apt-transport-https ca-certificates linux-image-extra-$(uname -r) linux-image-extra-virtual docker-engine openjdk-8-jre-headless
+      apt-get -y upgrade
+      wget -e use_proxy=yes -e http_proxy=192.168.10.252:3128 http://www.caucho.com/download/debian/dists/trusty/universe/binary-amd64/resin_4.0.49-amd64.deb
+      dpkg --force-depends -i resin_4.0.49-amd64.deb
+      rm resin_4.0.49-amd64.deb
+      cp -f /vagrant/data/docker.service /lib/systemd/system/
+      chmod 644 /lib/systemd/system/docker.service
+      systemctl daemon-reload
+      service docker restart
+      usermod -aG docker ubuntu
+      #docker pull zookeeper
+      docker run --name zookeeper-web --restart always -d -p 2181:2181 -p 2888:2888 -p 3888:3888 zookeeper
+      echo Rebooting...
+    SHELL
+
+    web.vm.provision :unix_reboot
+
+    web.vm.provision "shell", inline: "echo Done!"
+  end
+
+  config.vm.define "redis" do |redis|
+    redis.vm.box = "ubuntu/xenial64"
+    #redis.vm.network "private_network", ip: "192.168.10.103"
+    redis.vm.network "forwarded_port", guest: 6379, host: 6379
+    redis.vm.network "forwarded_port", guest: 2181, host: 6181
+    redis.vm.network "forwarded_port", guest: 2888, host: 6888
+    redis.vm.network "forwarded_port", guest: 3888, host: 7888
+
+    redis.vm.provision "shell", inline: <<-SHELL
+      #cp -f /vagrant/data/sources.list /etc/apt/
+      #chmod 644 /etc/apt/sources.list
+      apt-key adv --keyserver hkp://ipv4.pool.sks-keyservers.net:11371 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+      #add-apt-repository 'deb https://apt.dockerproject.org/repo ubuntu-xenial main'
+      add-apt-repository 'deb http://docker.apt.cacher.ng ubuntu-xenial main'
+      cp -f /vagrant/data/00aptproxy /etc/apt/apt.conf.d/
+      chmod 644 /etc/apt/apt.conf.d/00aptproxy
+      apt-get update
+      apt-get install -y --allow-unauthenticated apt-transport-https ca-certificates linux-image-extra-$(uname -r) linux-image-extra-virtual docker-engine
+      apt-get -y upgrade
+      cp -f /vagrant/data/docker.service /lib/systemd/system/
+      chmod 644 /lib/systemd/system/docker.service
+      systemctl daemon-reload
+      service docker restart
+      usermod -aG docker ubuntu
+      #docker pull zookeeper
+      docker run --name zookeeper-redis --restart always -d -p 2181:2181 -p 2888:2888 -p 3888:3888 zookeeper
+      #docker pull redis:alpine
+      docker run --name redis --restart always -d -p 6379:6379 redis:alpine
+      echo Rebooting...
+    SHELL
+
+    redis.vm.provision :unix_reboot
+
+    redis.vm.provision "shell", inline: "echo Done!"
+  end
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://atlas.hashicorp.com/search.
-  config.vm.box = "ubuntu/xenial64"
+  #config.vm.box = "ubuntu/xenial64"
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
@@ -70,18 +184,17 @@ Vagrant.configure("2") do |config|
   #   apt-get update
   #   apt-get install -y apache2
   # SHELL
-  config.vm.provision "shell", inline: <<-SHELL
-    cp -f /vagrant/data/docker.list /etc/apt/sources.list.d/
-    apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
-    apt-get purge lxc-docker
-    apt-get update
-    apt-get install -y --allow-unauthenticated apt-transport-https ca-certificates linux-image-extra-$(uname -r) linux-image-extra-virtual docker-engine
-    apt-get -y upgrade
-    usermod -aG docker ubuntu
-    echo Rebooting...
-  SHELL
+  #config.vm.provision "shell", inline: <<-SHELL
+  #  cp -f /vagrant/data/docker.list /etc/apt/sources.list.d/
+  #  apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+  #  apt-get update
+  #  apt-get install -y --allow-unauthenticated apt-transport-https ca-certificates linux-image-extra-$(uname -r) linux-image-extra-virtual docker-engine
+  #  apt-get -y upgrade
+  #  usermod -aG docker ubuntu
+  #  echo Rebooting...
+  #SHELL
 
-  config.vm.provision :unix_reboot
+  #config.vm.provision :unix_reboot
 
-  config.vm.provision "shell", inline: "echo Done!"
+  #config.vm.provision "shell", inline: "echo Done!"
 end
