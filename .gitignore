@@ -1,3 +1,5 @@
 *.log
 .vagrant
-cache/repo
+cache/repo/apt-cacher-ng
+cache/repo/docker-registry
+cache/repo/squid

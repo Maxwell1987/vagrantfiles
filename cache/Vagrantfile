@@ -79,13 +79,10 @@ Vagrant.configure("2") do |config|
   # SHELL
   config.vm.provision "shell", inline: <<-SHELL
     timedatectl set-timezone Asia/Shanghai
-    #cp -f /vagrant/data/00aptproxy /etc/apt/apt.conf.d/
-    #chmod 644 /etc/apt/apt.conf.d/00aptproxy
     umount /var/cache/apt-cacher-ng
     rmdir /var/cache/apt-cacher-ng
     apt-key adv --keyserver hkp://ha.pool.sks-keyservers.net:11371 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
     add-apt-repository 'deb https://apt.dockerproject.org/repo ubuntu-xenial main'
-    #add-apt-repository 'deb http://docker.apt.cacher.ng ubuntu-xenial main'
     apt-get update
     apt-get install -y --allow-unauthenticated apt-cacher-ng squid docker-engine
     apt-get upgrade -y
