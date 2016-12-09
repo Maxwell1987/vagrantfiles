@@ -79,25 +79,33 @@ Vagrant.configure("2") do |config|
   # SHELL
   config.vm.provision "shell", inline: <<-SHELL
     timedatectl set-timezone Asia/Shanghai
-    apt-key adv --keyserver hkp://ha.pool.sks-keyservers.net:11371 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+    apt-key add /vagrant/data/docker.key
+    #apt-key adv --keyserver hkp://ha.pool.sks-keyservers.net:11371 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
     add-apt-repository 'deb https://apt.dockerproject.org/repo ubuntu-xenial main'
     apt-get update
-    apt-get install -y --allow-unauthenticated apt-cacher-ng squid docker-engine
+    apt-get install -y --allow-unauthenticated apt-cacher-ng squid docker-engine nginx
     apt-get upgrade -y
+    apt-get autoremove
     usermod -aG docker ubuntu
 
     cp -f /vagrant/data/backends_docker /etc/apt-cacher-ng/
     printf "\nRemap-docker: http://docker.apt.cacher.ng ; file:backends_docker\n" >> /etc/apt-cacher-ng/acng.conf
     service apt-cacher-ng restart
 
-    cp -f /vagrant/data/squid.conf /etc/squid/
     systemctl disable squid.service
-    docker run -d --name registry --restart on-failure -p 5000:5000 -v /vagrant/config/docker-registry/config.yml:/etc/docker/registry/config.yml -v /vagrant/repo/docker-registry:/var/lib/registry registry
+    service squid stop
+    cp -f /vagrant/data/squid.conf /etc/squid/
+
+    docker run -d --name registry --restart on-failure -p 192.168.10.252:5000:5000 -v /vagrant/config/docker-registry/config.yml:/etc/docker/registry/config.yml -v /vagrant/repo/docker-registry:/var/lib/registry registry
   SHELL
+
+  config.vm.provision :unix_reboot
+
+  #config.vm.provision "shell", inline: "apt-get autoremove"
 
   config.vm.provision "shell", run: "always", inline: <<-SHELL
     mount -t vboxsf -o uid=`id -u proxy`,gid=`id -g proxy` var_spool_squid /var/spool/squid
-    service squid start 
+    service squid start
     docker start registry
   SHELL
 
