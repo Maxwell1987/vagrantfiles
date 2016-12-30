@@ -3,3 +3,7 @@
 cache/repo/apt-cacher-ng
 cache/repo/docker-registry
 cache/repo/squid
+/rancher-cache/repo/*
+!/rancher-cache/repo/.gitkeep
+/rancher-cluster/swap/*
+!/rancher-cluster/swap/.gitkeep
