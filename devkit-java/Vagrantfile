@@ -1,0 +1,112 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+require 'yaml'
+
+require File.join(File.dirname(__FILE__), 'scripts/vagrant-provision-reboot-plugin')
+
+confDir = $confDir ||= File.expand_path(File.dirname(__FILE__))
+confYamlPath = confDir + "/devkit-java.yaml"
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+# you're doing.
+Vagrant.configure("2") do |config|
+  if File.exist? confYamlPath then
+    settings = YAML::load(File.read(confYamlPath))
+  end
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.customize [ "modifyvm", :id, "--uartmode1", "disconnected" ]
+    vb.memory = settings["memory"] ||= "2048"
+    vb.cpus = settings["cpus"] ||= "2"
+  end
+
+  config.vm.define "devkit-java" do |node|
+    node.vm.box = "ubuntu/xenial64"
+    node.vm.box_check_update = true
+
+    if settings["cache_enabled"] then
+      node.vm.box_server_url = settings["box_server_url"] ||= "https://vagrant.env-cacher"
+    end
+
+    node.vm.hostname = "devkit-java"
+    node.vm.network "forwarded_port", guest: 3306, host: 3306
+    node.vm.network "forwarded_port", guest: 8080, host: 8080
+
+    if settings.has_key?("private_ip") then
+      config.vm.network "private_network", ip: settings["private_ip"]
+    end
+
+    node.vm.provision "shell", args: [ if settings["cache_enabled"] then 'true' else 'false' end ], inline: <<-SHELL
+      timedatectl set-timezone Asia/Shanghai
+
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+      #apt-key add /vagrant/data/docker.key
+
+      if [ "$1" == "true" ]; then
+        add-apt-repository "deb [arch=amd64] http://docker.apt.cacher.ng $(lsb_release -cs) stable"
+        add-apt-repository --remove "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+        echo 'Acquire::http::Proxy "http://apt.env-cacher:3142";' > /etc/apt/apt.conf.d/00aptproxy
+      else
+        add-apt-repository --remove "deb [arch=amd64] http://docker.apt.cacher.ng $(lsb_release -cs) stable"
+        add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+        if [ -f /etc/apt/apt.conf.d/00aptproxy ]; then
+          rm /etc/apt/apt.conf.d/00aptproxy
+        fi
+      fi
+
+      apt-get update
+      apt-get -y install docker-ce
+      usermod -aG docker ubuntu
+      apt-get -y upgrade
+      apt-get -y autoremove
+
+      if [ "$1" == "true" ]; then
+        echo '{ "registry-mirrors": [ "https://registry.env-cacher" ] }' > /etc/docker/daemon.json
+        systemctl restart docker.service
+      else
+        if [ -f /etc/docker/daemon.json ]; then
+          rm /etc/docker/daemon.json
+          systemctl restart docker.service
+        fi
+      fi
+      touch .provision
+    SHELL
+
+    node.vm.provision :unix_reboot
+
+    node.vm.provision "shell", run: "always", args: [ if settings["cache_enabled"] then 'true' else 'false' end ], inline: <<-SHELL
+      if [ -f .provision ]; then
+        rm .provision
+      else
+        if [ "$1" == "true" ]; then
+          add-apt-repository "deb [arch=amd64] http://docker.apt.cacher.ng $(lsb_release -cs) stable"
+          add-apt-repository --remove "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+          if [ ! -f /etc/apt/apt.conf.d/00aptproxy ]; then
+            echo 'Acquire::http::Proxy "http://apt.env-cacher:3142";' > /etc/apt/apt.conf.d/00aptproxy
+          fi
+          if [ ! -f /etc/docker/daemon.json ]; then
+            echo '{ "registry-mirrors": [ "https://registry.env-cacher" ] }' > /etc/docker/daemon.json
+            systemctl restart docker.service
+          fi
+        else
+          add-apt-repository --remove "deb [arch=amd64] http://docker.apt.cacher.ng $(lsb_release -cs) stable"
+          add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+          if [ -f /etc/apt/apt.conf.d/00aptproxy ]; then
+            rm /etc/apt/apt.conf.d/00aptproxy
+          fi
+          if [ -f /etc/docker/daemon.json ]; then
+            rm /etc/docker/daemon.json
+            systemctl restart docker.service
+          fi
+        fi
+
+        apt-get update
+        apt-get -y upgrade
+        apt-get -y autoremove
+      fi
+    SHELL
+  end
+end

@@ -1,0 +1,10 @@
+---
+memory: 2048
+cpus: 2
+cache_enabled: false
+
+# if box server is different from cache ip, set this variable
+# box_server_url: https://vagrant.env-cacher
+
+# set private network address if need a private network
+# private_ip: "192.168.10.10"
