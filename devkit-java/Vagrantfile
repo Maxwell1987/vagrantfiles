@@ -39,7 +39,7 @@ Vagrant.configure("2") do |config|
       config.vm.network "private_network", ip: settings["private_ip"]
     end
 
-    node.vm.provision "shell", args: [ if settings["cache_enabled"] then 'true' else 'false' end ], inline: <<-SHELL
+    node.vm.provision "shell", args: [ if settings["cache_enabled"] then 'true' else 'false' end, settings["registry-mirrors"] ], inline: <<-SHELL
       timedatectl set-timezone Asia/Shanghai
 
       curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
@@ -63,21 +63,21 @@ Vagrant.configure("2") do |config|
       apt-get -y upgrade
       apt-get -y autoremove
 
-      if [ "$1" == "true" ]; then
-        echo '{ "registry-mirrors": [ "https://registry.env-cacher" ] }' > /etc/docker/daemon.json
-        systemctl restart docker.service
-      else
+      if [ "$2" == "" ]; then
         if [ -f /etc/docker/daemon.json ]; then
           rm /etc/docker/daemon.json
           systemctl restart docker.service
         fi
+      else
+        echo "{ \\"registry-mirrors\\": $2 }" > /etc/docker/daemon.json
+        systemctl restart docker.service
       fi
       touch .provision
     SHELL
 
     node.vm.provision :unix_reboot
 
-    node.vm.provision "shell", run: "always", args: [ if settings["cache_enabled"] then 'true' else 'false' end ], inline: <<-SHELL
+    node.vm.provision "shell", run: "always", args: [ if settings["cache_enabled"] then 'true' else 'false' end, settings["registry-mirrors"] ], inline: <<-SHELL
       if [ -f .provision ]; then
         rm .provision
       else
@@ -87,20 +87,22 @@ Vagrant.configure("2") do |config|
           if [ ! -f /etc/apt/apt.conf.d/00aptproxy ]; then
             echo 'Acquire::http::Proxy "http://apt.env-cacher:3142";' > /etc/apt/apt.conf.d/00aptproxy
           fi
-          if [ ! -f /etc/docker/daemon.json ]; then
-            echo '{ "registry-mirrors": [ "https://registry.env-cacher" ] }' > /etc/docker/daemon.json
-            systemctl restart docker.service
-          fi
         else
           add-apt-repository --remove "deb [arch=amd64] http://docker.apt.cacher.ng $(lsb_release -cs) stable"
           add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
           if [ -f /etc/apt/apt.conf.d/00aptproxy ]; then
             rm /etc/apt/apt.conf.d/00aptproxy
           fi
+        fi
+
+        if [ "$2" == "" ]; then
           if [ -f /etc/docker/daemon.json ]; then
             rm /etc/docker/daemon.json
             systemctl restart docker.service
           fi
+        else
+          echo "{ \\"registry-mirrors\\": $2 }" > /etc/docker/daemon.json
+          systemctl restart docker.service
         fi
 
         apt-get update

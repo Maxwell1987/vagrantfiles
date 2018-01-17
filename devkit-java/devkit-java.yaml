@@ -8,3 +8,5 @@ cache_enabled: false
 
 # set private network address if need a private network
 # private_ip: "192.168.10.10"
+
+registry-mirrors: '["https://registry.docker-cn.com"]'
